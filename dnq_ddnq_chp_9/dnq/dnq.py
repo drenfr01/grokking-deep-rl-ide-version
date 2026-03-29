@@ -34,6 +34,21 @@ class DQN():
         self.n_warmup_batches = n_warmup_batches
         self.update_target_every_steps = update_target_every_steps
 
+    @staticmethod
+    def _reset_env(env):
+        reset_out = env.reset()
+        return reset_out[0] if isinstance(reset_out, tuple) else reset_out
+
+    @staticmethod
+    def _step_env(env, action):
+        step_out = env.step(action)
+        if len(step_out) == 5:
+            new_state, reward, terminated, truncated, info = step_out
+            is_terminal = terminated or truncated
+        else:
+            new_state, reward, is_terminal, info = step_out
+        return new_state, reward, is_terminal, info
+
     def optimize_model(self, experiences):
         states, actions, rewards, next_states, is_terminals = experiences
         batch_size = len(is_terminals)
@@ -50,7 +65,7 @@ class DQN():
 
     def interaction_step(self, state, env):
         action = self.training_strategy.select_action(self.online_model, state)
-        new_state, reward, is_terminal, info = env.step(action)
+        new_state, reward, is_terminal, info = self._step_env(env, action)
         is_truncated = 'TimeLimit.truncated' in info and info['TimeLimit.truncated']
         is_failure = is_terminal and not is_truncated
         experience = (state, action, reward, new_state, float(is_failure))
@@ -94,8 +109,8 @@ class DQN():
                                                        self.value_optimizer_lr)
 
         self.replay_buffer = self.replay_buffer_fn()
-        self.training_strategy = training_strategy_fn()
-        self.evaluation_strategy = evaluation_strategy_fn() 
+        self.training_strategy = self.training_strategy_fn()
+        self.evaluation_strategy = self.evaluation_strategy_fn() 
                     
         result = np.empty((max_episodes, 5))
         result[:] = np.nan
@@ -103,7 +118,7 @@ class DQN():
         for episode in range(1, max_episodes + 1):
             episode_start = time.time()
             
-            state, is_terminal = env.reset(), False
+            state, is_terminal = self._reset_env(env), False
             self.episode_reward.append(0.0)
             self.episode_timestep.append(0.0)
             self.episode_exploration.append(0.0)
@@ -190,11 +205,11 @@ class DQN():
     def evaluate(self, eval_policy_model, eval_env, n_episodes=1):
         rs = []
         for _ in range(n_episodes):
-            s, d = eval_env.reset(), False
+            s, d = self._reset_env(eval_env), False
             rs.append(0)
             for _ in count():
                 a = self.evaluation_strategy.select_action(eval_policy_model, s)
-                s, r, d, _ = eval_env.step(a)
+                s, r, d, _ = self._step_env(eval_env, a)
                 rs[-1] += r
                 if d: break
         return np.mean(rs), np.std(rs)

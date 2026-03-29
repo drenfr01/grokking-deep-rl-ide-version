@@ -15,7 +15,16 @@ def get_make_env_fn(**kargs):
                 pass
         if env is None:
             env = gym.make(env_name)
-        if seed is not None: env.seed(seed)
+        if seed is not None:
+            # Gymnasium removed env.seed(); seed via reset instead.
+            try:
+                env.reset(seed=seed)
+            except TypeError:
+                # Backward compatibility for older Gym versions.
+                if hasattr(env, "seed"):
+                    env.seed(seed)
+            if hasattr(env.action_space, "seed"):
+                env.action_space.seed(seed)
         env = env.unwrapped if unwrapped else env
         if inner_wrappers:
             for wrapper in inner_wrappers:
