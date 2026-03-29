@@ -9,9 +9,16 @@ def get_make_env_fn(**kargs):
         mdir = tempfile.mkdtemp()
         env = None
         if render:
+            render_mode = render if isinstance(render, str) else 'rgb_array'
             try:
-                env = gym.make(env_name, render=render)
-            except:
+                env = gym.make(env_name, render_mode=render_mode)
+            except TypeError:
+                # Backward compatibility for older Gym APIs.
+                try:
+                    env = gym.make(env_name, render=render)
+                except Exception:
+                    pass
+            except Exception:
                 pass
         if env is None:
             env = gym.make(env_name)
@@ -29,10 +36,12 @@ def get_make_env_fn(**kargs):
         if inner_wrappers:
             for wrapper in inner_wrappers:
                 env = wrapper(env)
-        env = wrappers.Monitor(
-            env, mdir, force=True, 
-            mode=monitor_mode, 
-            video_callable=lambda e_idx: record) if monitor_mode else env
+        env = wrappers.RecordVideo(
+            env,
+            video_folder=mdir,
+            episode_trigger=lambda _episode_id: bool(record),
+            name_prefix=str(monitor_mode),
+        ) if monitor_mode else env
         if outer_wrappers:
             for wrapper in outer_wrappers:
                 env = wrapper(env)

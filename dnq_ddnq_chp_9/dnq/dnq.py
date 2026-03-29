@@ -49,6 +49,40 @@ class DQN():
             new_state, reward, is_terminal, info = step_out
         return new_state, reward, is_terminal, info
 
+    @staticmethod
+    def _get_env_videos(env):
+        # Gymnasium's RecordVideo stores files in a folder (no env.videos list).
+        legacy_videos = getattr(env, 'videos', None)
+        if legacy_videos:
+            return legacy_videos
+
+        wrappers_chain = []
+        current = env
+        while current is not None:
+            wrappers_chain.append(current)
+            current = getattr(current, 'env', None)
+
+        video_dir = None
+        for wrapped_env in wrappers_chain:
+            if hasattr(wrapped_env, 'video_folder'):
+                video_dir = wrapped_env.video_folder
+                break
+            if hasattr(wrapped_env, 'directory'):
+                video_dir = wrapped_env.directory
+                break
+
+        if video_dir is None:
+            return []
+
+        videos = []
+        for video_path in sorted(glob.glob(os.path.join(video_dir, '*.mp4'))):
+            base_path = os.path.splitext(video_path)[0]
+            meta_candidates = (base_path + '.meta.json', base_path + '.json')
+            meta_path = next((p for p in meta_candidates if os.path.exists(p)), None)
+            if meta_path is not None:
+                videos.append((video_path, meta_path))
+        return videos
+
     def optimize_model(self, experiences):
         states, actions, rewards, next_states, is_terminals = experiences
         batch_size = len(is_terminals)
@@ -243,7 +277,7 @@ class DQN():
 
         self.evaluate(self.online_model, env, n_episodes=n_episodes)
         env.close()
-        data = get_gif_html(env_videos=env.videos, 
+        data = get_gif_html(env_videos=self._get_env_videos(env),
                             title=title.format(self.__class__.__name__),
                             max_n_videos=max_n_videos)
         del env
@@ -258,7 +292,7 @@ class DQN():
             self.evaluate(self.online_model, env, n_episodes=1)
 
         env.close()
-        data = get_gif_html(env_videos=env.videos, 
+        data = get_gif_html(env_videos=self._get_env_videos(env),
                             title=title.format(self.__class__.__name__),
                             subtitle_eps=sorted(checkpoint_paths.keys()),
                             max_n_videos=max_n_videos)
