@@ -8,7 +8,7 @@ from itertools import count
 
 import torch
 import numpy as np
-from IPython.display import HTML
+from IPython.display import HTML, display
 
 from utils import get_gif_html, get_videos_html
 
@@ -79,9 +79,38 @@ class DQN():
             base_path = os.path.splitext(video_path)[0]
             meta_candidates = (base_path + '.meta.json', base_path + '.json')
             meta_path = next((p for p in meta_candidates if os.path.exists(p)), None)
-            if meta_path is not None:
-                videos.append((video_path, meta_path))
+            # Newer Gymnasium versions may not emit sidecar metadata.
+            videos.append((video_path, meta_path))
         return videos
+
+    @staticmethod
+    def _get_video_debug_info(env):
+        wrappers_chain = []
+        current = env
+        while current is not None:
+            wrappers_chain.append(current)
+            current = getattr(current, 'env', None)
+
+        video_dir = None
+        wrapper_names = [w.__class__.__name__ for w in wrappers_chain]
+        for wrapped_env in wrappers_chain:
+            if hasattr(wrapped_env, 'video_folder'):
+                video_dir = wrapped_env.video_folder
+                break
+            if hasattr(wrapped_env, 'directory'):
+                video_dir = wrapped_env.directory
+                break
+
+        mp4_files = []
+        if video_dir is not None and os.path.isdir(video_dir):
+            mp4_files = sorted(glob.glob(os.path.join(video_dir, '*.mp4')))
+
+        return {
+            'video_dir': video_dir,
+            'video_dir_exists': bool(video_dir and os.path.isdir(video_dir)),
+            'wrapper_chain': wrapper_names,
+            'mp4_files': mp4_files,
+        }
 
     def optimize_model(self, experiences):
         states, actions, rewards, next_states, is_terminals = experiences
@@ -276,12 +305,24 @@ class DQN():
         self.online_model.load_state_dict(torch.load(checkpoint_paths[last_ep]))
 
         self.evaluate(self.online_model, env, n_episodes=n_episodes)
+        env_videos = self._get_env_videos(env)
+        debug_info = self._get_video_debug_info(env)
         env.close()
-        data = get_gif_html(env_videos=self._get_env_videos(env),
+        data = get_gif_html(env_videos=env_videos,
                             title=title.format(self.__class__.__name__),
                             max_n_videos=max_n_videos)
+        if data is None:
+            data = (
+                '<p>No videos were generated in demo_last().</p>'
+                f"<p>video_dir: {debug_info['video_dir']}</p>"
+                f"<p>video_dir_exists: {debug_info['video_dir_exists']}</p>"
+                f"<p>wrappers: {', '.join(debug_info['wrapper_chain'])}</p>"
+                f"<p>mp4_count: {len(debug_info['mp4_files'])}</p>"
+            )
+        html = HTML(data=data)
+        display(html)
         del env
-        return HTML(data=data)
+        return html
 
     def demo_progression(self, title='{} Agent progression', max_n_videos=5):
         env = self.make_env_fn(**self.make_env_kargs, monitor_mode='evaluation', render=True, record=True)
@@ -291,14 +332,24 @@ class DQN():
             self.online_model.load_state_dict(torch.load(checkpoint_paths[i]))
             self.evaluate(self.online_model, env, n_episodes=1)
 
+        env_videos = self._get_env_videos(env)
+        debug_info = self._get_video_debug_info(env)
         env.close()
-        data = get_videos_html(env_videos=self._get_env_videos(env),
+        data = get_videos_html(env_videos=env_videos,
                                title=title.format(self.__class__.__name__),
                                max_n_videos=max_n_videos)
         if data is None:
-            data = '<p>No videos were generated.</p>'
+            data = (
+                '<p>No videos were generated in demo_progression().</p>'
+                f"<p>video_dir: {debug_info['video_dir']}</p>"
+                f"<p>video_dir_exists: {debug_info['video_dir_exists']}</p>"
+                f"<p>wrappers: {', '.join(debug_info['wrapper_chain'])}</p>"
+                f"<p>mp4_count: {len(debug_info['mp4_files'])}</p>"
+            )
+        html = HTML(data=data)
+        display(html)
         del env
-        return HTML(data=data)
+        return html
 
     def save_checkpoint(self, episode_idx, model):
         torch.save(model.state_dict(), 
