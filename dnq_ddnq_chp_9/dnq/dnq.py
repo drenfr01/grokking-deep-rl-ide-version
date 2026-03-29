@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from IPython.display import HTML
 
-from utils import get_gif_html
+from utils import get_gif_html, get_videos_html
 
 LEAVE_PRINT_EVERY_N_SECS = 60
 ERASE_LINE = '\x1b[2K'
@@ -292,10 +292,11 @@ class DQN():
             self.evaluate(self.online_model, env, n_episodes=1)
 
         env.close()
-        data = get_gif_html(env_videos=self._get_env_videos(env),
-                            title=title.format(self.__class__.__name__),
-                            subtitle_eps=sorted(checkpoint_paths.keys()),
-                            max_n_videos=max_n_videos)
+        data = get_videos_html(env_videos=self._get_env_videos(env),
+                               title=title.format(self.__class__.__name__),
+                               max_n_videos=max_n_videos)
+        if data is None:
+            data = '<p>No videos were generated.</p>'
         del env
         return HTML(data=data)
 
