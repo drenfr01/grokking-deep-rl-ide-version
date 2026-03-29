@@ -1,3 +1,6 @@
+import numpy as np
+import torch
+
 class GreedyStrategy():
     def __init__(self):
         self.exploratory_action_taken = False
